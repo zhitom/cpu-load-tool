@@ -1,5 +1,7 @@
 # cpu-load-tool
 
+> [中文版本](README_zh.md) | English Version
+
 ## Project Description
 
 Monitors total CPU usage and dynamically adjusts CPU load when it falls below or exceeds specified thresholds.
