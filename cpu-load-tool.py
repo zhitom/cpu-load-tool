@@ -7,6 +7,7 @@ import math
 import psutil
 import numpy as np
 import signal
+import re
 
 
 def parse_args():
@@ -28,6 +29,7 @@ Examples:
     parser.add_argument('--numpy_size', type=int, default=1000000, help='Initial numpy array size (default: 1000000)')
     parser.add_argument('--thread_pool_ratio', type=float, default=0.6, help='CPU ratio threshold for thread pool adjustment (default: 0.6)')
     parser.add_argument('--thread_pool_ratio_secs', type=int, default=30, help='Duration in seconds for thread pool adjustment (default: 30)')
+    parser.add_argument('--hours', type=str, default='', help='Working hours specification. Format: in[x1,y1],ex[x2,y2]... in=include, ex=exclude. Example: in[9,18],ex[12,13]')
     args = parser.parse_args()
 
     if len(sys.argv) == 1:
@@ -39,6 +41,62 @@ Examples:
 
 def get_cpu_count():
     return psutil.cpu_count()
+
+
+def parse_hours_spec(hours_str):
+    include_intervals = []
+    exclude_intervals = []
+    
+    if not hours_str:
+        return include_intervals, exclude_intervals
+    
+    pattern = r'(in|ex)\[(\d+),(\d+)\]'
+    matches = re.findall(pattern, hours_str)
+    
+    for match in matches:
+        typ, x, y = match
+        x, y = int(x), int(y)
+        if x < 0:
+            x = 0
+        if y > 23:
+            y = 23
+        if typ == 'in':
+            include_intervals.append((x, y))
+        elif typ == 'ex':
+            exclude_intervals.append((x, y))
+    
+    return include_intervals, exclude_intervals
+
+
+def is_in_working_hours(include_intervals, exclude_intervals):
+    current_hour = time.localtime().tm_hour
+    
+    if not include_intervals:
+        return True
+    
+    for x, y in include_intervals:
+        if x <= y:
+            if x <= current_hour <= y:
+                for ex_x, ex_y in exclude_intervals:
+                    if ex_x <= ex_y:
+                        if ex_x <= current_hour <= ex_y:
+                            return False
+                    else:
+                        if current_hour >= ex_x or current_hour <= ex_y:
+                            return False
+                return True
+        else:
+            if current_hour >= x or current_hour <= y:
+                for ex_x, ex_y in exclude_intervals:
+                    if ex_x <= ex_y:
+                        if ex_x <= current_hour <= ex_y:
+                            return False
+                    else:
+                        if current_hour >= ex_x or current_hour <= ex_y:
+                            return False
+                return True
+    
+    return False
 
 
 def calculation_task():
@@ -75,6 +133,9 @@ class Config:
         self.numpy_size = 1000000
         self.thread_pool_ratio = 0.8
         self.thread_pool_ratio_secs = 30
+        self.hours = ""
+        self.include_intervals = []
+        self.exclude_intervals = []
         self.running = True
         self.tls_lock = threading.Lock()
         self.thread_pool_lock = threading.Lock()
@@ -247,6 +308,7 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
     last_thread_pool_action = None
     sample_count = 0
     is_initial_phase = True  # 标记是否为初始调整阶段
+    last_hours_state = None  # 记录上一次小时段状态
 
     while config.running:
         elapsed = time.time() - start_time
@@ -255,11 +317,30 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
         if total_elapsed >= duration_sec:
             break
 
+        if config.hours:
+            current_hours_state = is_in_working_hours(config.include_intervals, config.exclude_intervals)
+            if current_hours_state != last_hours_state:
+                last_hours_state = current_hours_state
+                if current_hours_state:
+                    print(f"[Hours] Entering working hours, resuming all threads")
+                    with config.thread_pool_lock:
+                        for i in range(len(thread_status)):
+                            thread_status[i] = True
+                else:
+                    print(f"[Hours] Exiting working hours, stopping all threads")
+                    with config.thread_pool_lock:
+                        for i in range(len(thread_status)):
+                            thread_status[i] = False
+
         if elapsed >= gather_duration_sec:
             if cpu_samples:
                 avg = sum(cpu_samples) / len(cpu_samples)
                 print(f"[Monitor] Avg CPU: {avg:.4f} | Samples: {len(cpu_samples)} | Target: [{min_ratio:.2f}, {max_ratio:.2f}]")
-                adjust_tls(avg)
+                
+                if config.hours and not is_in_working_hours(config.include_intervals, config.exclude_intervals):
+                    print(f"[Monitor] Outside working hours, skipping dynamic adjustment")
+                else:
+                    adjust_tls(avg)
 
                 running_count = sum(1 for s in thread_status if s)
                 stopped_count = max_threads - running_count
@@ -314,6 +395,9 @@ def main():
     config.numpy_size = args.numpy_size
     config.thread_pool_ratio = args.thread_pool_ratio
     config.thread_pool_ratio_secs = args.thread_pool_ratio_secs
+    config.hours = args.hours
+    if config.hours:
+        config.include_intervals, config.exclude_intervals = parse_hours_spec(config.hours)
 
     print(f"Configuration:")
     print(f"  loop_count: {config.loop_count}")
@@ -329,6 +413,10 @@ def main():
     print(f"  numpy_size: {config.numpy_size}")
     print(f"  thread_pool_ratio: {config.thread_pool_ratio}")
     print(f"  thread_pool_ratio_secs: {config.thread_pool_ratio_secs}")
+    if config.hours:
+        print(f"  hours: {config.hours}")
+        print(f"    include intervals: {config.include_intervals}")
+        print(f"    exclude intervals: {config.exclude_intervals}")
     print(f"  CPU count: {get_cpu_count()}")
     print("Starting worker threads and monitoring...")
 
@@ -339,13 +427,22 @@ def main():
 
     start_worker_threads()
 
-    # 启动时只激活1/3的线程，避免立即高CPU负载
+    # 根据小时段配置决定初始线程状态
     cpu_count = get_cpu_count()
-    initial_active = max(1, cpu_count // 3)
+    if config.hours:
+        if is_in_working_hours(config.include_intervals, config.exclude_intervals):
+            initial_active = max(1, cpu_count // 3)
+            print(f"[Hours] Currently in working hours, starting with {initial_active}/{cpu_count} threads")
+        else:
+            initial_active = 0
+            print(f"[Hours] Currently outside working hours, starting with {initial_active}/{cpu_count} threads")
+    else:
+        initial_active = max(1, cpu_count // 3)
+        print(f"Starting with {initial_active}/{cpu_count} threads active to avoid high initial CPU load")
+    
     with config.thread_pool_lock:
         for i in range(cpu_count):
             thread_status[i] = (i < initial_active)
-    print(f"Starting with {initial_active}/{cpu_count} threads active to avoid high initial CPU load")
 
     try:
         if config.run_mode == 'once':

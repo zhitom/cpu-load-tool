@@ -103,6 +103,34 @@ python cpu-load-tool.py --run_mode once --run_arg1 60
 | --numpy_size            | Initial numpy array size (for CPU load adjustment)| 1000000 |
 | --thread_pool_ratio     | CPU threshold for thread pool adjustment         | 0.6     |
 | --thread_pool_ratio_secs| Duration threshold for CPU anomaly               | 30      |
+| --hours                 | Working hours specification (see below)          | (empty) |
+
+### Working Hours Configuration
+
+The `--hours` parameter allows you to specify time windows when the CPU load should be active or inactive.
+
+**Format:** `in[x1,y1],ex[x2,y2]...`
+- `in[x,y]`: Include interval - CPU load is active during this period
+- `ex[x,y]`: Exclude interval - CPU load is inactive during this period
+- `x` and `y` are hours in 0-23 format
+
+**Examples:**
+```bash
+# Active during working hours 9:00-18:00
+cpu-load-tool.exe --hours "in[9,18]"
+
+# Active 9:00-18:00, but inactive during lunch 12:00-13:00
+cpu-load-tool.exe --hours "in[9,18],ex[12,13]"
+
+# Overnight only: active 22:00-6:00
+cpu-load-tool.exe --hours "in[22,6]"
+```
+
+**Behavior:**
+- When outside working hours: All threads are stopped, no CPU load is generated
+- When entering working hours: All threads are resumed
+- When leaving working hours: All threads are stopped
+- If no `--hours` parameter is provided, the program runs continuously
 
 ### Run Modes
 
