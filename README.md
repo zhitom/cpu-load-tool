@@ -124,9 +124,18 @@ cpu-load-tool.exe --hours "in[9,18],ex[12,13]"
 
 # Overnight only: active 22:00-6:00
 cpu-load-tool.exe --hours "in[22,6]"
+
+# Exclude only: active all day except lunch 12:00-13:00
+cpu-load-tool.exe --hours "ex[12,13]"
+
+# Multiple exclude intervals: exclude lunch and dinner
+cpu-load-tool.exe --hours "ex[12,13],ex[18,19]"
 ```
 
 **Behavior:**
+- When using `in[x,y]` only: CPU load is active only during specified periods
+- When using `ex[x,y]` only: CPU load is active all the time except during specified periods
+- When using both: CPU load is active during `in` periods but inactive during `ex` periods
 - When outside working hours: All threads are stopped, no CPU load is generated
 - When entering working hours: All threads are resumed
 - When leaving working hours: All threads are stopped

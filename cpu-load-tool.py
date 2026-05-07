@@ -72,6 +72,15 @@ def is_in_working_hours(include_intervals, exclude_intervals):
     current_hour = time.localtime().tm_hour
     
     if not include_intervals:
+        if not exclude_intervals:
+            return True
+        for ex_x, ex_y in exclude_intervals:
+            if ex_x <= ex_y:
+                if ex_x <= current_hour <= ex_y:
+                    return False
+            else:
+                if current_hour >= ex_x or current_hour <= ex_y:
+                    return False
         return True
     
     for x, y in include_intervals:
@@ -89,11 +98,12 @@ def is_in_working_hours(include_intervals, exclude_intervals):
             if current_hour >= x or current_hour <= y:
                 for ex_x, ex_y in exclude_intervals:
                     if ex_x <= ex_y:
-                        if ex_x <= current_hour <= ex_y:
-                            return False
-                    else:
-                        if current_hour >= ex_x or current_hour <= ex_y:
-                            return False
+                        if ex_x <= ex_y:
+                            if ex_x <= current_hour <= ex_y:
+                                return False
+                        else:
+                            if current_hour >= ex_x or current_hour <= ex_y:
+                                return False
                 return True
     
     return False
