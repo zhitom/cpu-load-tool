@@ -348,38 +348,41 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
                 print(f"[Monitor] Avg CPU: {avg:.4f} | Samples: {len(cpu_samples)} | Target: [{min_ratio:.2f}, {max_ratio:.2f}]")
                 
                 if config.hours and not is_in_working_hours(config.include_intervals, config.exclude_intervals):
-                    print(f"[Monitor] Outside working hours, skipping dynamic adjustment")
+                    print(f"[Monitor] Outside working hours, skipping dynamic adjustment and thread pool adjustment")
+                    # 重置状态
+                    thread_pool_timer_start = None
+                    last_thread_pool_action = None
                 else:
                     adjust_tls(avg)
 
-                running_count = sum(1 for s in thread_status if s)
-                stopped_count = max_threads - running_count
+                    running_count = sum(1 for s in thread_status if s)
+                    stopped_count = max_threads - running_count
 
-                current_state = 'high' if avg > config.thread_pool_ratio else ('low' if avg < config.thread_pool_ratio else 'normal')
-                
-                # 在初始阶段，对于增加线程的操作不等待冷却时间
-                fast_adjust = is_initial_phase and current_state == 'low' and stopped_count > 0
-                
-                if current_state != 'normal':
-                    if last_thread_pool_action != current_state or fast_adjust:
-                        adjust_thread_pool(avg)
-                        last_thread_pool_action = current_state
-                        thread_pool_timer_start = time.time()
-                    elif thread_pool_timer_start is not None and time.time() - thread_pool_timer_start >= config.thread_pool_ratio_secs:
-                        if current_state == 'high' and running_count > 0:
+                    current_state = 'high' if avg > config.thread_pool_ratio else ('low' if avg < config.thread_pool_ratio else 'normal')
+                    
+                    # 在初始阶段，对于增加线程的操作不等待冷却时间
+                    fast_adjust = is_initial_phase and current_state == 'low' and stopped_count > 0
+                    
+                    if current_state != 'normal':
+                        if last_thread_pool_action != current_state or fast_adjust:
                             adjust_thread_pool(avg)
-                        elif current_state == 'low' and stopped_count > 0:
-                            adjust_thread_pool(avg)
-                        thread_pool_timer_start = time.time()
-                    elif thread_pool_timer_start is None:
-                        thread_pool_timer_start = time.time()
-                else:
-                    thread_pool_timer_start = None
-                    last_thread_pool_action = None
-                    # CPU在目标范围后，退出初始阶段
-                    if is_initial_phase and min_ratio <= avg <= max_ratio:
-                        is_initial_phase = False
-                        print("[Monitor] CPU reached target range, exiting initial fast adjustment phase")
+                            last_thread_pool_action = current_state
+                            thread_pool_timer_start = time.time()
+                        elif thread_pool_timer_start is not None and time.time() - thread_pool_timer_start >= config.thread_pool_ratio_secs:
+                            if current_state == 'high' and running_count > 0:
+                                adjust_thread_pool(avg)
+                            elif current_state == 'low' and stopped_count > 0:
+                                adjust_thread_pool(avg)
+                            thread_pool_timer_start = time.time()
+                        elif thread_pool_timer_start is None:
+                            thread_pool_timer_start = time.time()
+                    else:
+                        thread_pool_timer_start = None
+                        last_thread_pool_action = None
+                        # CPU在目标范围后，退出初始阶段
+                        if is_initial_phase and min_ratio <= avg <= max_ratio:
+                            is_initial_phase = False
+                            print("[Monitor] CPU reached target range, exiting initial fast adjustment phase")
 
             cpu_samples = []
             start_time = time.time()
@@ -408,7 +411,9 @@ def main():
     config.hours = args.hours
     if config.hours:
         config.include_intervals, config.exclude_intervals = parse_hours_spec(config.hours)
-
+    else:
+        config.include_intervals = [0,23] #默认 0-23 小时
+        config.exclude_intervals = []
     print(f"Configuration:")
     print(f"  loop_count: {config.loop_count}")
     print(f"  sleep_count_ms: {config.sleep_count_ms}")
