@@ -43,6 +43,11 @@ def get_cpu_count():
     return psutil.cpu_count()
 
 
+def log_print(msg):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{timestamp} {msg}")
+
+
 def parse_hours_spec(hours_str):
     include_intervals = []
     exclude_intervals = []
@@ -161,7 +166,7 @@ shutdown_event = threading.Event()  # 用于优雅退出的事件
 def signal_handler(signum, frame):
     """信号处理函数，用于优雅退出"""
     signal_name = signal.Signals(signum).name if signum in signal.Signals.__members__.values() else f"signal {signum}"
-    print(f"\n[{signal_name}] Received, initiating graceful shutdown...")
+    log_print(f"[{signal_name}] Received, initiating graceful shutdown...")
     shutdown_event.set()
     config.running = False
 
@@ -243,23 +248,22 @@ def adjust_tls(avg):
                     # 中等差距：正常调整
                     step_factor = 0.3 + gap_ratio * 0.5
                     new_tls = max(1, int(config.sleep_count_ms * (1 - step_factor)))
-                print(f"[Dynamic] CPU {avg:.4f} < min {config.min_ratio} | sleep_count_ms {config.sleep_count_ms} -> {new_tls}ms (gap:{gap_ratio:.2f}) | threads: {running_count} running, {stopped_count} stopped")
+                log_print(f"[Dynamic] CPU {avg:.4f} < min {config.min_ratio} | sleep_count_ms {config.sleep_count_ms} -> {new_tls}ms (gap:{gap_ratio:.2f}) | threads: {running_count} running, {stopped_count} stopped")
                 config.sleep_count_ms = new_tls
             else:
-                # 当差距很大时，numpy_size也应该增长得更快
                 if gap_ratio > 0.5:
                     scale_factor = 2.0 + gap_ratio * 0.5
                 else:
                     scale_factor = 1.3 + gap_ratio * 0.5
                 new_size = int(config.numpy_size * scale_factor)
-                print(f"[Dynamic] CPU {avg:.4f} < min {config.min_ratio} | sleep_count_ms at min(1ms) | numpy_size {config.numpy_size} -> {new_size} (gap:{gap_ratio:.2f}) | threads: {running_count} running, {stopped_count} stopped")
+                log_print(f"[Dynamic] CPU {avg:.4f} < min {config.min_ratio} | sleep_count_ms at min(1ms) | numpy_size {config.numpy_size} -> {new_size} (gap:{gap_ratio:.2f}) | threads: {running_count} running, {stopped_count} stopped")
                 config.numpy_size = new_size
         elif avg > config.max_ratio:
             gap_ratio = (avg - config.max_ratio) / ratio_range
             if config.numpy_size > 100000:
                 step_factor = 0.3 + gap_ratio * 0.4
                 new_size = max(100000, int(config.numpy_size * (1 - step_factor)))
-                print(f"[Dynamic] CPU {avg:.4f} > max {config.max_ratio} | numpy_size {config.numpy_size} -> {new_size} (gap:{gap_ratio:.2f}) | sleep_count_ms: {config.sleep_count_ms}ms | threads: {running_count} running, {stopped_count} stopped")
+                log_print(f"[Dynamic] CPU {avg:.4f} > max {config.max_ratio} | numpy_size {config.numpy_size} -> {new_size} (gap:{gap_ratio:.2f}) | sleep_count_ms: {config.sleep_count_ms}ms | threads: {running_count} running, {stopped_count} stopped")
                 config.numpy_size = new_size
             else:
                 step_factor = 0.3 + gap_ratio * 0.4
@@ -267,16 +271,16 @@ def adjust_tls(avg):
                 max_tls = 600000
                 if new_tls > max_tls:
                     new_tls = max_tls
-                    print(f"[Dynamic] CPU {avg:.4f} > max {config.max_ratio} | sleep_count_ms {config.sleep_count_ms} -> {new_tls}ms (capped at 10min) | threads: {running_count} running, {stopped_count} stopped")
+                    log_print(f"[Dynamic] CPU {avg:.4f} > max {config.max_ratio} | sleep_count_ms {config.sleep_count_ms} -> {new_tls}ms (capped at 10min) | threads: {running_count} running, {stopped_count} stopped")
                 else:
-                    print(f"[Dynamic] CPU {avg:.4f} > max {config.max_ratio} | sleep_count_ms {config.sleep_count_ms} -> {new_tls}ms (gap:{gap_ratio:.2f}) | threads: {running_count} running, {stopped_count} stopped")
+                    log_print(f"[Dynamic] CPU {avg:.4f} > max {config.max_ratio} | sleep_count_ms {config.sleep_count_ms} -> {new_tls}ms (gap:{gap_ratio:.2f}) | threads: {running_count} running, {stopped_count} stopped")
                 config.sleep_count_ms = new_tls
         else:
             if running_count > 0:
                 cpu_deviation = abs(avg - target_ratio) / ratio_range
                 if cpu_deviation < 0.15:
                     config.sleep_count_ms = max(1, config.sleep_count_ms - 1)
-                    print(f"[FineTune] CPU {avg:.4f} near target | sleep_count_ms {config.sleep_count_ms + 1} -> {config.sleep_count_ms}ms | threads: {running_count} running")
+                    log_print(f"[FineTune] CPU {avg:.4f} near target | sleep_count_ms {config.sleep_count_ms + 1} -> {config.sleep_count_ms}ms | threads: {running_count} running")
 
 
 def adjust_thread_pool(avg):
@@ -295,7 +299,7 @@ def adjust_thread_pool(avg):
                         if stopped >= stop_count:
                             break
                 new_running = running_count - stopped
-                print(f"[ThreadPool] CPU {avg:.4f} > threshold {config.thread_pool_ratio} | stopped {stopped} threads | threads: {new_running} running, {stopped_count + stopped} stopped")
+                log_print(f"[ThreadPool] CPU {avg:.4f} > threshold {config.thread_pool_ratio} | stopped {stopped} threads | threads: {new_running} running, {stopped_count + stopped} stopped")
         elif avg < config.thread_pool_ratio:
             if stopped_count > 0:
                 start_count = max(1, stopped_count // 2)
@@ -307,7 +311,7 @@ def adjust_thread_pool(avg):
                         if started >= start_count:
                             break
                 new_running = running_count + started
-                print(f"[ThreadPool] CPU {avg:.4f} < threshold {config.thread_pool_ratio} | started {started} threads | threads: {new_running} running, {stopped_count - started} stopped")
+                log_print(f"[ThreadPool] CPU {avg:.4f} < threshold {config.thread_pool_ratio} | started {started} threads | threads: {new_running} running, {stopped_count - started} stopped")
 
 
 def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_ratio, max_ratio):
@@ -332,12 +336,12 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
             if current_hours_state != last_hours_state:
                 last_hours_state = current_hours_state
                 if current_hours_state:
-                    print(f"[Hours] Entering working hours, resuming all threads")
+                    log_print(f"[Hours] Entering working hours, resuming all threads")
                     with config.thread_pool_lock:
                         for i in range(len(thread_status)):
                             thread_status[i] = True
                 else:
-                    print(f"[Hours] Exiting working hours, stopping all threads")
+                    log_print(f"[Hours] Exiting working hours, stopping all threads")
                     with config.thread_pool_lock:
                         for i in range(len(thread_status)):
                             thread_status[i] = False
@@ -345,11 +349,10 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
         if elapsed >= gather_duration_sec:
             if cpu_samples:
                 avg = sum(cpu_samples) / len(cpu_samples)
-                print(f"[Monitor] Avg CPU: {avg:.4f} | Samples: {len(cpu_samples)} | Target: [{min_ratio:.2f}, {max_ratio:.2f}]")
+                log_print(f"[Monitor] Avg CPU: {avg:.4f} | Samples: {len(cpu_samples)} | Target: [{min_ratio:.2f}, {max_ratio:.2f}]")
                 
                 if config.hours and not is_in_working_hours(config.include_intervals, config.exclude_intervals):
-                    print(f"[Monitor] Outside working hours, skipping dynamic adjustment and thread pool adjustment")
-                    # 重置状态
+                    log_print(f"[Monitor] Outside working hours, skipping dynamic adjustment and thread pool adjustment")
                     thread_pool_timer_start = None
                     last_thread_pool_action = None
                 else:
@@ -360,7 +363,6 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
 
                     current_state = 'high' if avg > config.thread_pool_ratio else ('low' if avg < config.thread_pool_ratio else 'normal')
                     
-                    # 在初始阶段，对于增加线程的操作不等待冷却时间
                     fast_adjust = is_initial_phase and current_state == 'low' and stopped_count > 0
                     
                     if current_state != 'normal':
@@ -379,10 +381,9 @@ def monitor_loop(duration_sec, gather_duration_sec, gather_interval_sec, min_rat
                     else:
                         thread_pool_timer_start = None
                         last_thread_pool_action = None
-                        # CPU在目标范围后，退出初始阶段
                         if is_initial_phase and min_ratio <= avg <= max_ratio:
                             is_initial_phase = False
-                            print("[Monitor] CPU reached target range, exiting initial fast adjustment phase")
+                            log_print("[Monitor] CPU reached target range, exiting initial fast adjustment phase")
 
             cpu_samples = []
             start_time = time.time()
@@ -447,13 +448,13 @@ def main():
     if config.hours:
         if is_in_working_hours(config.include_intervals, config.exclude_intervals):
             initial_active = max(1, cpu_count // 3)
-            print(f"[Hours] Currently in working hours, starting with {initial_active}/{cpu_count} threads")
+            log_print(f"[Hours] Currently in working hours, starting with {initial_active}/{cpu_count} threads")
         else:
             initial_active = 0
-            print(f"[Hours] Currently outside working hours, starting with {initial_active}/{cpu_count} threads")
+            log_print(f"[Hours] Currently outside working hours, starting with {initial_active}/{cpu_count} threads")
     else:
         initial_active = max(1, cpu_count // 3)
-        print(f"Starting with {initial_active}/{cpu_count} threads active to avoid high initial CPU load")
+        log_print(f"Starting with {initial_active}/{cpu_count} threads active to avoid high initial CPU load")
     
     with config.thread_pool_lock:
         for i in range(cpu_count):
@@ -462,33 +463,33 @@ def main():
     try:
         if config.run_mode == 'once':
             monitor_loop(config.run_arg1, config.gather_duration_sec, config.gather_interval_sec, config.min_ratio, config.max_ratio)
-            print("Run mode 'once' completed.")
+            log_print("Run mode 'once' completed.")
         else:
-            print("Running in daemon mode. Press Ctrl+C to stop.")
+            log_print("Running in daemon mode. Press Ctrl+C to stop.")
             monitor_loop(float('inf'), config.gather_duration_sec, config.gather_interval_sec, config.min_ratio, config.max_ratio)
     except KeyboardInterrupt:
-        print("\n[Ctrl+C] Initiating graceful shutdown...")
+        log_print("[Ctrl+C] Initiating graceful shutdown...")
     finally:
-        print("[Shutdown] Setting running flag to False...")
+        log_print("[Shutdown] Setting running flag to False...")
         config.running = False
         
-        print("[Shutdown] Activating all threads to allow them to exit...")
+        log_print("[Shutdown] Activating all threads to allow them to exit...")
         with config.thread_pool_lock:
             for i in range(len(thread_status)):
                 thread_status[i] = True
         
-        print(f"[Shutdown] Waiting for {len(worker_threads)} worker threads to exit...")
+        log_print(f"[Shutdown] Waiting for {len(worker_threads)} worker threads to exit...")
         for i, t in enumerate(worker_threads):
             try:
                 t.join(timeout=3)
                 if t.is_alive():
-                    print(f"[Shutdown] Thread {i} did not exit in time")
+                    log_print(f"[Shutdown] Thread {i} did not exit in time")
                 else:
-                    print(f"[Shutdown] Thread {i} exited successfully")
+                    log_print(f"[Shutdown] Thread {i} exited successfully")
             except Exception as e:
-                print(f"[Shutdown] Error joining thread {i}: {e}")
+                log_print(f"[Shutdown] Error joining thread {i}: {e}")
         
-        print("[Shutdown] All threads exited. Goodbye!")
+        log_print("[Shutdown] All threads exited. Goodbye!")
 
 
 if __name__ == '__main__':
