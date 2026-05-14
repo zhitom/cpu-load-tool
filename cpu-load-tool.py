@@ -45,7 +45,7 @@ def get_cpu_count():
 
 def log_print(msg):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"{timestamp} {msg}")
+    print(f"{timestamp} {msg}", flush=True)
 
 
 def parse_hours_spec(hours_str):
@@ -415,31 +415,31 @@ def main():
     else:
         config.include_intervals = [0,23] #默认 0-23 小时
         config.exclude_intervals = []
-    print(f"Configuration:")
-    print(f"  loop_count: {config.loop_count}")
-    print(f"  sleep_count_ms: {config.sleep_count_ms}")
-    print(f"  sleep_end_ms: {config.sleep_end_ms}")
-    print(f"  min_ratio: {config.min_ratio}")
-    print(f"  max_ratio: {config.max_ratio}")
-    print(f"  gather_interval_sec: {config.gather_interval_sec}")
-    print(f"  gather_duration_sec: {config.gather_duration_sec}")
-    print(f"  run_mode: {config.run_mode}")
+    print(f"Configuration:", flush=True)
+    print(f"  loop_count: {config.loop_count}", flush=True)
+    print(f"  sleep_count_ms: {config.sleep_count_ms}", flush=True)
+    print(f"  sleep_end_ms: {config.sleep_end_ms}", flush=True)
+    print(f"  min_ratio: {config.min_ratio}", flush=True)
+    print(f"  max_ratio: {config.max_ratio}", flush=True)
+    print(f"  gather_interval_sec: {config.gather_interval_sec}", flush=True)
+    print(f"  gather_duration_sec: {config.gather_duration_sec}", flush=True)
+    print(f"  run_mode: {config.run_mode}", flush=True)
     if config.run_mode == 'once':
-        print(f"  run_arg1 (duration): {config.run_arg1}")
-    print(f"  numpy_size: {config.numpy_size}")
-    print(f"  thread_pool_ratio: {config.thread_pool_ratio}")
-    print(f"  thread_pool_ratio_secs: {config.thread_pool_ratio_secs}")
+        print(f"  run_arg1 (duration): {config.run_arg1}", flush=True)
+    print(f"  numpy_size: {config.numpy_size}", flush=True)
+    print(f"  thread_pool_ratio: {config.thread_pool_ratio}", flush=True)
+    print(f"  thread_pool_ratio_secs: {config.thread_pool_ratio_secs}", flush=True)
     if config.hours:
-        print(f"  hours: {config.hours}")
-        print(f"    include intervals: {config.include_intervals}")
-        print(f"    exclude intervals: {config.exclude_intervals}")
-    print(f"  CPU count: {get_cpu_count()}")
-    print("Starting worker threads and monitoring...")
+        print(f"  hours: {config.hours}", flush=True)
+        print(f"    include intervals: {config.include_intervals}", flush=True)
+        print(f"    exclude intervals: {config.exclude_intervals}", flush=True)
+    print(f"  CPU count: {get_cpu_count()}", flush=True)
+    print("Starting worker threads and monitoring...", flush=True)
 
     # 注册信号处理器
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    print("Registered signal handlers for SIGINT (Ctrl+C) and SIGTERM")
+    print("Registered signal handlers for SIGINT (Ctrl+C) and SIGTERM", flush=True)
 
     start_worker_threads()
 
